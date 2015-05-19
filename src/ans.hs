@@ -68,7 +68,7 @@ parseExactnessThenRadix = do
 parseNumberPrefix :: Parser NumberPrefix
 parseNumberPrefix = parseRadixThenExactness <|> parseExactnessThenRadix
 
-parseNumBin :: Parser LispVal
+parseNumBin :: Parser Integer
 parseNumBin = do
   d <- many1 $ oneOf "01"
   return $ fst $ (!! 0) $ readInt 2 isDigit ((\x -> x-48) . ord) d
@@ -91,31 +91,47 @@ parserIntFabric Hex = parseNumHex
 
 parseNumPyramid :: Radix -> Parser LispVal
 parseNumPyramid r =
-  parseReal r <|>
-  parseRealAtReal r <|>
-  parseRealPlusImag r <|>
-  parseRealMinusImag r <|>
-  parsePlusImag r <|>
-  parseMinusImag r
+  parseRealF r <|>
+  parseRealAtRealF r <|>
+  parseRealPlusImagF r <|>
+  parseRealMinusImagF r <|>
+  parsePlusImagF r <|>
+  parseMinusImagF r
 
 parseNumPyramid radix =
   foldl (\parser parserfabric -> parser <|> (parserfabric radix))
   lookAhead anyToken
   [parseRealF, parseRealAtRealmF, parseRealPlusImagF, parseRealMinusImagF, parsePlusImagF, parseMinusImagF]
 
+parseRealAtRealF :: Radix -> Parser LispVal
+parseRealAtRealF r = do
+  real1 <- parseRealF
+  optSpaces
+  char '@'
+  optSpaces
+  real2 <- parseRealF
+  return $ Complex (real1 :)
+
 parseRealF :: Radix -> Parser LispVal
 parseRealF r = do
-  sign <- parseSign
+  sign <- option '+' oneOf "+-"
   num <- parseURealF r
   return $ case sign of
-    '-' -> negate num
+    '-' -> negateL num
     _ -> num
+
+negateL :: LispVal -> LispVal
+negateL (Number i) = Number $ negate i
+negateL (Float d) = Float $ negate d
+negateL (Complex c) = Complex $ negate c
+negateL (Rational r) = Rational $ negate r
+negateL other = other
 
 parseUrealF :: Radix -> Parser LispVal
 parseUrealF r =
-  (parseUintegerF r) <|>
-  (parseURationalF r) <|>
-  (parseDecimalF r)
+  (parseUintegerF r) >>= (return . Number) <|>
+  (parseURationalF r) >>= (return . Rational) <|>
+  (parseDecimalF r) >>= (return . Float)
 
 parseUintegerF :: Radix -> Parser Integer
 parseUintegerF r = do
@@ -132,9 +148,9 @@ parseURationalF r = do
   uint2 <- parseUintegerF r
   return $ uint1 % uint2
 
-parseDecimalF :: Radix -> Parser Integer
+parseDecimalF :: Radix -> Parser Double
 parseDecimalF Dec = 
-  parseUintegerExp <|>
+  parseUintegerExp >>= (return . fromInteger) <|>
   parseDotDecSuff <|>
   parseDecDotDecSuff <|>
   parseDecStuffDot
@@ -192,8 +208,6 @@ parseUintegerExp = do
   return $ case sign expSuffix of
     Plus -> int
     Minus -> negate int
-
-parseExpSuffix :: 
 
 parseExponent :: Parser Exponent
 parseExponent = do
