@@ -4,12 +4,26 @@ import Control.Monad
 import Text.ParserCombinators.Parsec hiding (spaces)
 import Numeric
 import Data.Char
+import Data.Ratio
+import Data.Complex
 
 
 main :: IO ()
 main = do
   args <- getArgs
   putStrLn (readExpr (args !! 0))
+
+data LispVal = Atom String
+               | List [LispVal]
+               | DottedList [LispVal] LispVal
+               | Number Integer
+               | Float Double
+               | Complex (Complex Double)
+               | Rational (Ratio Integer)
+               | String String
+               | Bool Bool
+               deriving Show
+
 
 spaces :: Parser ()
 spaces = skipMany1 space
@@ -54,7 +68,7 @@ parseExactnessThenRadix = do
 parseNumberPrefix :: Parser NumberPrefix
 parseNumberPrefix = parseRadixThenExactness <|> parseExactnessThenRadix
 
-parseNumBin :: Parser Integer
+parseNumBin :: Parser LispVal
 parseNumBin = do
   d <- many1 $ oneOf "01"
   return $ fst $ (!! 0) $ readInt 2 isDigit ((\x -> x-48) . ord) d
@@ -69,13 +83,13 @@ parseNumOct = parseNumGen readOct ['0'..'7']
 parseNumDec = parseNumGen readDec ['0'..'9']
 parseNumHex = parseNumGen readHex $ ['0'..'9'] ++ ['a'..'f']
 
-parserFabric :: Radix -> Parser Integer
-parserFabric Bin = parseNumBin
-parserFabric Oct = parseNumOct
-parserFabric Dec = parseNumDec
-parserFabric Hex = parseNumHex
+parserIntFabric :: Radix -> Parser Integer
+parserIntFabric Bin = parseNumBin
+parserIntFabric Oct = parseNumOct
+parserIntFabric Dec = parseNumDec
+parserIntFabric Hex = parseNumHex
 
-parseNumPyramid :: (Num a, Eq a) => Radix -> Parser a
+parseNumPyramid :: Radix -> Parser LispVal
 parseNumPyramid r =
   parseReal r <|>
   parseRealAtReal r <|>
@@ -89,7 +103,7 @@ parseNumPyramid radix =
   lookAhead anyToken
   [parseRealF, parseRealAtRealmF, parseRealPlusImagF, parseRealMinusImagF, parsePlusImagF, parseMinusImagF]
 
-parseRealF :: (Num a, Eq a) => Radix -> Parser a
+parseRealF :: Radix -> Parser LispVal
 parseRealF r = do
   sign <- parseSign
   num <- parseURealF r
@@ -97,44 +111,98 @@ parseRealF r = do
     '-' -> negate num
     _ -> num
 
-parseUrealF :: (Num a, Eq a) => Radix -> Parser a
+parseUrealF :: Radix -> Parser LispVal
 parseUrealF r =
   (parseUintegerF r) <|>
   (parseURationalF r) <|>
   (parseDecimalF r)
 
-parseUintegerF :: (Num a, Eq a) => Radix -> Parser a
+parseUintegerF :: Radix -> Parser Integer
 parseUintegerF r = do
-  uint <- parserFabric r
-  sharps <- many $ char '#'
+  uint <- parserIntFabric r
+  many $ char '#'
   return uint
 
-parseURationalF :: (Num a, Eq a) => Radix -> Parser a
+parseURationalF :: Radix -> Parser (Ratio Integer)
 parseURationalF r = do
   uint1 <- parseUintegerF r
-  sp1 <- optSpaces
-  div <- char '/'
-  sp2 <- optSpaces
+  optSpaces
+  char '/'
+  optSpaces
   uint2 <- parseUintegerF r
+  return $ uint1 % uint2
 
-parseDecimalF :: (Num a, Eq a) => Radix -> Parser a
-parseDecimalF Dec =
-  uint <- ParseUintegerF Dec
+parseDecimalF :: Radix -> Parser Integer
+parseDecimalF Dec = 
+  parseUintegerExp <|>
+  parseDotDecSuff <|>
+  parseDecDotDecSuff <|>
+  parseDecStuffDot
 parseDecimalF _ = return $ Expect "Dec radix"
 
-parseUintegerExp :: (Num a, Eq a) => Parser a
-parseUintegerExp =
-  uint <- parseUintegerF Dec
-  expSuffix <- parseSuffix
+divByTons :: Integer -> Double
+divByTons i = fromInteger i / (10 ^ (ceiling $ logBase 10 i))
 
+parseDotDecSuff :: Parser Double
+parseDotDecSuff = do
+  char '.'
+  mant <- parseUintegerF Dec
+  expSuffix <- optionMaybe parseExponent
+  return $ case expSuffix of
+    Some suff -> v where
+      v = case sign expSuffix of
+        Plus -> i
+        Minus -> negate i
+          where i = divByTons mant * (10 ^ (expVal suff))
+    None -> divByTons mant
 
-parseSuffix :: Parser Suffix
-parseSuffix = do
-  expRaw <- oneOf "esfdlESFDL"
+parseDecDotDecSuff :: Parser Double
+parseDecDotDecSuff = do
+  int1 <- parseNumDec
+  char '.'
+  int2 <- option 0 parseNumDec
+  many $ char '#'
+  expSuffix <- optionMaybe parseExponent
+  return $
+    let num = (fromInteger int1) + if int2 == 0 then 0 else divByTons int2 in
+     case expSuffix of
+      Some suff -> v where
+        v = case sign expSuffix of
+          Plus -> i
+          Minus -> negate i
+            where i = num * (10 ^ (expVal stuff))
+      None -> num
+
+parseDecStuffDot :: Parser Double
+parseDecStuffDot = do
+  int1 <- parseNumDec
+  many1 & char '#'
+  char '.'
+  many $ char '#'
+  expSuffix <- optionMaybe parseExponent
+  return $ case expSuffix of
+    Some suff -> (fromInteger int1) * (10 ^ (expVal suff))
+    None -> fromInteger int1
+
+parseUintegerExp :: Parser Integer
+parseUintegerExp = do
+  mant <- parseUintegerF Dec
+  expSuffix <- parseExponent
+  let int = mant * (10 ^ (expVal expSuffix))
+  return $ case sign expSuffix of
+    Plus -> int
+    Minus -> negate int
+
+parseExpSuffix :: 
+
+parseExponent :: Parser Exponent
+parseExponent = do
+  expMarkRaw <- oneOf "esfdlESFDL"
   signRaw <- option '+' oneOf "+-"
-  return $ Suffix { expMarker = expM, sign = signM}
+  expValRaw <- parseNumDec
+  return $ Exponent { expMarker = expM, sign = signM, expVal = expValRaw }
     where
-      expM = case expRaw of
+      expM = case expMarkRaw of
         'E' -> Exponent
         'e' -> Exponent
         'S' -> Short
@@ -149,15 +217,13 @@ parseSuffix = do
         '+' -> Plus
         '-' -> Minus
 
-  
-
 data ExponentMarker = Exponent | Short | Float | Double | Long deriving Show
 
 data Sign = Plus | Minus deriving Show
 
-data Suffix = Suffix { expMarker :: ExponentMarker, sign :: Sign, expVal :: Integer } deriving (Show)
+data Exponent = Exponent { expMarker :: ExponentMarker, sign :: Sign, expVal :: Integer } deriving (Show)
 
-parseExpr :: (Num a, Eq a) => Parser a
+parseExpr :: Parser LispVal
 parseExpr = do
   prefix <- parseNumPrefix
   let rad = radix prefix
