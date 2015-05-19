@@ -128,7 +128,7 @@ data ExponentMarker = Exponent | Short | Float | Double | Long deriving Show
 
 data Sign = Plus | Minus deriving Show
 
-data Suffix = Suffix { expMarker :: ExponentMarker, sign :: Sign } deriving (Show)
+data Suffix = Suffix { expMarker :: ExponentMarker, sign :: Sign, expVal :: Integer } deriving (Show)
 
 parseSuffix :: Parser Suffix
 parseSuffix = do
