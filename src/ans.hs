@@ -73,7 +73,7 @@ parseExactnessThenRadix = do
   return $ NumberPrefix { radix = radix, exactness = exactness }
 
 parseNumberPrefix :: Parser NumberPrefix
-parseNumberPrefix = parseRadixThenExactness <|> parseExactnessThenRadix
+parseNumberPrefix = try parseRadixThenExactness <|> parseExactnessThenRadix
 
 parseNumBin :: Parser Integer
 parseNumBin = do
@@ -160,8 +160,8 @@ negateL other = other
 
 parseUrealF :: Radix -> Parser LispVal
 parseUrealF r =
-  --(>>=) (parseUintegerF r) (return . Number) <|>
-  --(>>=) (parseURationalF r) (return . Rational) <|>
+  (>>=) (parseUintegerF r) (return . Number) <|>
+  (>>=) (parseURationalF r) (return . Rational) <|>
   (>>=) (parseDecimalF r) (return . Float)
 
 parseUintegerF :: Radix -> Parser Integer
