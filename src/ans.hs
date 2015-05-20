@@ -94,10 +94,8 @@ parseNumPyramid :: Radix -> Parser LispVal
 parseNumPyramid r =
   (parseRealF r) <|>
   (parseRealAtRealF r) <|>
-  (parseRealPlusImagF r) <|>
-  (parseRealMinusImagF r) <|>
-  (parsePlusImagF r) <|>
-  (parseMinusImagF r)
+  (parseRealThenImagF r) <|>
+  (parseSignedImagF r)
 
 {--
 parseNumPyramid radix =
@@ -124,41 +122,20 @@ fromLispReal _ = 0 -- no way!
 makeComplex :: LispVal -> LispVal -> LispVal
 makeComplex r1 r2 = Complex ((fromLispReal r1) :+ (fromLispReal r2))
 
-parseRealPlusImagF :: Radix -> Parser LispVal
-parseRealPlusImagF r = do
+parseRealThenImagF :: Radix -> Parser LispVal
+parseRealThenImagF r = do
   real <- parseRealF r
-  optSpaces
-  char '+'
-  optSpaces
-  imag <- parseImagF r
+  imag <- parseSignedImagF r
   return $ makeComplex real imag
 
-parseRealMinusImagF :: Radix -> Parser LispVal
-parseRealMinusImagF r = do
-  real <- parseRealF r
-  optSpaces
-  char '-'
-  optSpaces
-  imag <- parseImagF r
-  return $ makeComplex real (- imag)
-
-parsePlusImagF :: Radix -> Parser LispVal
-parsePlusImagF r = do
-  char '+'
-  imag <- parseImagF r
-  return $ makeComplex 0 imag
-
-parseMinusImagF :: Radix -> Parser LispVal
-parseMinusImagF r = do
-  char '-'
-  imag <- parseImagF r
-  return $ makeComplex 0 (- imag)
-
-parseImagF :: Radix -> Parser LispVal
-parseImagF r = do
-  val <- option (Number 0) (parseRealF r)
+parseSignedImagF :: Radix -> Parser LispVal
+parseSignedImagF r = do
+  sign <- oneOf "+-"
+  val <- option (Number 0) (parseUrealF r)
   char 'i'
-  return val
+  return $ case sign of
+    '-' -> negateL val
+    '+' -> val
     
 parseRealF :: Radix -> Parser LispVal
 parseRealF r = do
@@ -206,8 +183,10 @@ parseDecimalF _ = do
   string "Expecting Decimal"
   return 0
 
-divByTons :: Integer -> Double
-divByTons i = fromInteger i / (10 ^ (ceiling $ logBase 10 i))
+--divByTons :: Integer -> Double
+divByTons i =
+  d / (fromInteger (10 ^ (ceiling (logBase 10 d))))
+  where d = fromInteger i
 
 parseDotDecSuff :: Parser Double
 parseDotDecSuff = do
