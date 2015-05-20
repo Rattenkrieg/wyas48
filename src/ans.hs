@@ -34,8 +34,8 @@ optSpaces = optional $ many space
 
 data Radix = Bin | Oct | Dec | Hex deriving (Show)
 
-parseRadix :: Parser Radix
-parseRadix = do
+parseRadixStrong :: Parser Radix
+parseRadixStrong = do
   char '#'
   base <- oneOf "bodx"
   return $ case base of
@@ -44,13 +44,19 @@ parseRadix = do
     'd' -> Dec
     'x' -> Hex
 
-parseExactness :: Parser Bool
-parseExactness = do
+parseRadix :: Parser Radix
+parseRadix = option Dec parseRadixStrong
+
+parseExactnessStrong :: Parser Bool
+parseExactnessStrong = do
   char '#'
   exactness <- oneOf "ei"
   return $ case exactness of
             'e' -> True
             'i' -> False
+
+parseExactness :: Parser Bool
+parseExactness = option False parseExactnessStrong
 
 data NumberPrefix = NumberPrefix { radix :: Radix, exactness :: Bool}
 
@@ -154,8 +160,8 @@ negateL other = other
 
 parseUrealF :: Radix -> Parser LispVal
 parseUrealF r =
-  (>>=) (parseUintegerF r) (return . Number) <|>
-  (>>=) (parseURationalF r) (return . Rational) <|>
+  --(>>=) (parseUintegerF r) (return . Number) <|>
+  --(>>=) (parseURationalF r) (return . Rational) <|>
   (>>=) (parseDecimalF r) (return . Float)
 
 parseUintegerF :: Radix -> Parser Integer
@@ -175,7 +181,7 @@ parseURationalF r = do
 
 parseDecimalF :: Radix -> Parser Double
 parseDecimalF Dec = 
-  (>>=) parseUintegerExp (return . fromInteger) <|>
+  parseUintegerExp <|>
   parseDotDecSuff <|>
   parseDecDotDecSuff <|>
   parseDecStuffDot
@@ -183,37 +189,37 @@ parseDecimalF _ = do
   string "Expecting Decimal"
   return 0
 
---divByTons :: Integer -> Double
-divByTons i =
-  d / (fromInteger (10 ^ (ceiling (logBase 10 d))))
-  where d = fromInteger i
+divByTons :: Double -> Double
+divByTons i = i / (10 ** (fromInteger (1 + (ceiling (logBase 10 i)))))
 
 parseDotDecSuff :: Parser Double
 parseDotDecSuff = do
   char '.'
   mant <- parseUintegerF Dec
+  many $ char '#'
+  let v = fromInteger mant
   expSuffix <- optionMaybe parseExponent
   return $ case expSuffix of
-    Just suff -> v where
-      v = case sign suff of
-        Plus -> divByTons $ mant * (10 ^ (expVal suff))
-        Minus -> negate $ divByTons $ mant * (10 ^ (expVal suff))
-    Nothing -> divByTons mant
+    Just suff -> divByTons $ v * (evalExp suff)
+    Nothing -> divByTons v
 
 parseDecDotDecSuff :: Parser Double
 parseDecDotDecSuff = do
   int1 <- parseNumDec
   char '.'
   int2 <- option 0 parseNumDec
+  let v = fromInteger int2
   many $ char '#'
   expSuffix <- optionMaybe parseExponent
+  let i1 = fromInteger int1
+  let i2 = fromInteger int2
   return $
-    let num = (fromInteger int1) + if int2 == 0 then 0 else divByTons int2 in
+    let num = i1 + if int2 == 0 then i2 else divByTons i2 in
      case expSuffix of
       Just suff -> v where
         v = case sign suff of
-          Plus -> num * (10 ^ (expVal suff))
-          Minus -> negate $ num * (10 ^ (expVal suff))
+          Plus -> num * (evalExp suff)
+          Minus -> negate $ num * (evalExp suff)
       Nothing -> num
 
 parseDecStuffDot :: Parser Double
@@ -224,17 +230,20 @@ parseDecStuffDot = do
   many $ char '#'
   expSuffix <- optionMaybe parseExponent
   return $ case expSuffix of
-    Just suff -> (fromInteger int1) * (10 ^ (expVal suff))
+    Just suff -> (fromInteger int1) * (evalExp suff)
     Nothing -> fromInteger int1
 
-parseUintegerExp :: Parser Integer
+parseUintegerExp :: Parser Double
 parseUintegerExp = do
   mant <- parseUintegerF Dec
   expSuffix <- parseExponent
-  let int = mant * (10 ^ (expVal expSuffix))
-  return $ case sign expSuffix of
-    Plus -> int
-    Minus -> negate int
+  return $ fromInteger mant * (evalExp expSuffix)
+
+--evalExp :: Exponent -> Integer
+evalExp e = 10 ** (fromInteger suff)
+  where suff = case sign e of
+                Plus -> expVal e
+                Minus -> negate $ expVal e
 
 parseExponent :: Parser Exponent
 parseExponent = do
@@ -276,5 +285,5 @@ readExpr :: String -> String
 readExpr input = do
   case parse parseExpr "lisp" input of
    Right v -> show v
-   Left err -> "err"
+   Left err -> show err
 
