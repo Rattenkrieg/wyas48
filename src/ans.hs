@@ -2,6 +2,7 @@ module Main where
 import System.Environment
 import Control.Monad
 import Text.ParserCombinators.Parsec hiding (spaces)
+import Text.Parsec.Error
 import Numeric
 import Data.Char
 import Data.Ratio
@@ -29,7 +30,7 @@ spaces :: Parser ()
 spaces = skipMany1 space
 
 optSpaces :: Parser ()
-optSpaces = option " " spaces
+optSpaces = optional $ many space
 
 data Radix = Bin | Oct | Dec | Hex deriving (Show)
 
@@ -91,31 +92,78 @@ parserIntFabric Hex = parseNumHex
 
 parseNumPyramid :: Radix -> Parser LispVal
 parseNumPyramid r =
-  parseRealF r <|>
-  parseRealAtRealF r <|>
-  parseRealPlusImagF r <|>
-  parseRealMinusImagF r <|>
-  parsePlusImagF r <|>
-  parseMinusImagF r
+  (parseRealF r) <|>
+  (parseRealAtRealF r) <|>
+  (parseRealPlusImagF r) <|>
+  (parseRealMinusImagF r) <|>
+  (parsePlusImagF r) <|>
+  (parseMinusImagF r)
 
+{--
 parseNumPyramid radix =
   foldl (\parser parserfabric -> parser <|> (parserfabric radix))
   lookAhead anyToken
-  [parseRealF, parseRealAtRealmF, parseRealPlusImagF, parseRealMinusImagF, parsePlusImagF, parseMinusImagF]
+  [parseRealF, parseRealAtRealF, parseRealPlusImagF, parseRealMinusImagF, parsePlusImagF, parseMinusImagF]
+--}
 
 parseRealAtRealF :: Radix -> Parser LispVal
 parseRealAtRealF r = do
-  real1 <- parseRealF
+  real1 <- parseRealF r
   optSpaces
   char '@'
   optSpaces
-  real2 <- parseRealF
-  return $ Complex (real1 :)
+  real2 <- parseRealF r
+  return $ Complex ((fromLispReal real1) :+ (fromLispReal real2))
 
+--fromLispReal :: (Fractional a) => LispVal -> a
+fromLispReal (Number n) = fromInteger n
+fromLispReal (Float f) = f
+fromLispReal (Rational r) = fromRational r
+fromLispReal _ = 0 -- no way!
+
+makeComplex :: LispVal -> LispVal -> LispVal
+makeComplex r1 r2 = Complex ((fromLispReal r1) :+ (fromLispReal r2))
+
+parseRealPlusImagF :: Radix -> Parser LispVal
+parseRealPlusImagF r = do
+  real <- parseRealF r
+  optSpaces
+  char '+'
+  optSpaces
+  imag <- parseImagF r
+  return $ makeComplex real imag
+
+parseRealMinusImagF :: Radix -> Parser LispVal
+parseRealMinusImagF r = do
+  real <- parseRealF r
+  optSpaces
+  char '-'
+  optSpaces
+  imag <- parseImagF r
+  return $ makeComplex real (- imag)
+
+parsePlusImagF :: Radix -> Parser LispVal
+parsePlusImagF r = do
+  char '+'
+  imag <- parseImagF r
+  return $ makeComplex 0 imag
+
+parseMinusImagF :: Radix -> Parser LispVal
+parseMinusImagF r = do
+  char '-'
+  imag <- parseImagF r
+  return $ makeComplex 0 (- imag)
+
+parseImagF :: Radix -> Parser LispVal
+parseImagF r = do
+  val <- option (Number 0) (parseRealF r)
+  char 'i'
+  return val
+    
 parseRealF :: Radix -> Parser LispVal
 parseRealF r = do
-  sign <- option '+' oneOf "+-"
-  num <- parseURealF r
+  sign <- option '+' (oneOf "+-")
+  num <- parseUrealF r
   return $ case sign of
     '-' -> negateL num
     _ -> num
@@ -129,9 +177,9 @@ negateL other = other
 
 parseUrealF :: Radix -> Parser LispVal
 parseUrealF r =
-  (parseUintegerF r) >>= (return . Number) <|>
-  (parseURationalF r) >>= (return . Rational) <|>
-  (parseDecimalF r) >>= (return . Float)
+  (>>=) (parseUintegerF r) (return . Number) <|>
+  (>>=) (parseURationalF r) (return . Rational) <|>
+  (>>=) (parseDecimalF r) (return . Float)
 
 parseUintegerF :: Radix -> Parser Integer
 parseUintegerF r = do
@@ -150,11 +198,13 @@ parseURationalF r = do
 
 parseDecimalF :: Radix -> Parser Double
 parseDecimalF Dec = 
-  parseUintegerExp >>= (return . fromInteger) <|>
+  (>>=) parseUintegerExp (return . fromInteger) <|>
   parseDotDecSuff <|>
   parseDecDotDecSuff <|>
   parseDecStuffDot
-parseDecimalF _ = return $ Expect "Dec radix"
+parseDecimalF _ = do
+  string "Expecting Decimal"
+  return 0
 
 divByTons :: Integer -> Double
 divByTons i = fromInteger i / (10 ^ (ceiling $ logBase 10 i))
@@ -165,12 +215,11 @@ parseDotDecSuff = do
   mant <- parseUintegerF Dec
   expSuffix <- optionMaybe parseExponent
   return $ case expSuffix of
-    Some suff -> v where
-      v = case sign expSuffix of
-        Plus -> i
-        Minus -> negate i
-          where i = divByTons mant * (10 ^ (expVal suff))
-    None -> divByTons mant
+    Just suff -> v where
+      v = case sign suff of
+        Plus -> divByTons $ mant * (10 ^ (expVal suff))
+        Minus -> negate $ divByTons $ mant * (10 ^ (expVal suff))
+    Nothing -> divByTons mant
 
 parseDecDotDecSuff :: Parser Double
 parseDecDotDecSuff = do
@@ -182,23 +231,22 @@ parseDecDotDecSuff = do
   return $
     let num = (fromInteger int1) + if int2 == 0 then 0 else divByTons int2 in
      case expSuffix of
-      Some suff -> v where
-        v = case sign expSuffix of
-          Plus -> i
-          Minus -> negate i
-            where i = num * (10 ^ (expVal stuff))
-      None -> num
+      Just suff -> v where
+        v = case sign suff of
+          Plus -> num * (10 ^ (expVal suff))
+          Minus -> negate $ num * (10 ^ (expVal suff))
+      Nothing -> num
 
 parseDecStuffDot :: Parser Double
 parseDecStuffDot = do
   int1 <- parseNumDec
-  many1 & char '#'
+  many1 $ char '#'
   char '.'
   many $ char '#'
   expSuffix <- optionMaybe parseExponent
   return $ case expSuffix of
-    Some suff -> (fromInteger int1) * (10 ^ (expVal suff))
-    None -> fromInteger int1
+    Just suff -> (fromInteger int1) * (10 ^ (expVal suff))
+    Nothing -> fromInteger int1
 
 parseUintegerExp :: Parser Integer
 parseUintegerExp = do
@@ -212,26 +260,26 @@ parseUintegerExp = do
 parseExponent :: Parser Exponent
 parseExponent = do
   expMarkRaw <- oneOf "esfdlESFDL"
-  signRaw <- option '+' oneOf "+-"
-  expValRaw <- parseNumDec
-  return $ Exponent { expMarker = expM, sign = signM, expVal = expValRaw }
-    where
-      expM = case expMarkRaw of
-        'E' -> Exponent
-        'e' -> Exponent
-        'S' -> Short
-        's' -> Short
-        'F' -> Float
-        'f' -> Float
-        'D' -> Double
-        'd' -> Double
-        'L' -> Long
-        'l' -> Long
-      signM = case signRaw of
+  let expM = case expMarkRaw of
+        'E' -> EM
+        'e' -> EM
+        'S' -> SM
+        's' -> SM
+        'F' -> FM
+        'f' -> FM
+        'D' -> DM
+        'd' -> DM
+        'L' -> LM
+        'l' -> LM
+  signRaw <- option '+' (oneOf "+-")
+  let signM = case signRaw of
         '+' -> Plus
         '-' -> Minus
+  expValRaw <- parseNumDec
+  return $ Exponent { expMarker = expM, sign = signM, expVal = expValRaw }      
+      
 
-data ExponentMarker = Exponent | Short | Float | Double | Long deriving Show
+data ExponentMarker = EM | SM | FM | DM | LM deriving Show
 
 data Sign = Plus | Minus deriving Show
 
@@ -239,7 +287,7 @@ data Exponent = Exponent { expMarker :: ExponentMarker, sign :: Sign, expVal :: 
 
 parseExpr :: Parser LispVal
 parseExpr = do
-  prefix <- parseNumPrefix
+  prefix <- parseNumberPrefix
   let rad = radix prefix
   let exact = exactness prefix
   val <- parseNumPyramid rad
