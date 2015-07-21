@@ -58,7 +58,7 @@ parseExactnessStrong = do
 parseExactness :: Parser Bool
 parseExactness = option False parseExactnessStrong
 
-data NumberPrefix = NumberPrefix { radix :: Radix, exactness :: Bool}
+data NumberPrefix = NumberPrefix { radix :: Radix, exactness :: Bool }
 
 parseRadixThenExactness :: Parser NumberPrefix
 parseRadixThenExactness = do
@@ -161,7 +161,6 @@ negateL other = other
 parseUrealF :: Radix -> Parser LispVal
 parseUrealF r =
   (>>=) (parseUintegerF r) (return . Number) <|>
-  (>>=) (parseURationalF r) (return . Rational) <|>
   (>>=) (parseDecimalF r) (return . Float)
 
 parseUintegerF :: Radix -> Parser Integer
