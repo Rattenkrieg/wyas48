@@ -121,7 +121,13 @@ parseExact :: Radix -> Parser LispVal
 parseExact r = do
   sign <- parseSign
   leadDigits <- parse r
-                
+  let inexactRemainder = liftM ((+1) . count) (many $ char '#')
+  let inexactDecPoint = char '.'
+  (do
+    remainder <- inexactRemainder
+    let exp = inexactDecPoint >> parse r
+    return $ sign leadDigits * remainder + exp)
+  <|> return $ Number $ sign leadDigits
   
 
 parseExactImag :: Radix -> Parser LispVal
