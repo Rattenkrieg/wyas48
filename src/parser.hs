@@ -14,15 +14,16 @@ main = do
   args <- getArgs
   putStrLn (readExpr (args !! 0))
 
-
-data LispVal = Atom String
-               | List [LispVal]
-               | DottedList [LispVal] LispVal
-               | Number Integer
+data LispNum = Number Integer
                | Double Double
                | Single Float
                | Complex (Complex Double)
                | Rational (Ratio Integer)
+
+data LispVal = Atom String
+               | List [LispVal]
+               | DottedList [LispVal] LispVal
+               | Number LispNum
                | String String
                | Bool Bool
                deriving Show
