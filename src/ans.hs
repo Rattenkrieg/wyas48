@@ -103,13 +103,6 @@ parseNumPyramid r =
   (parseRealThenImagF r) <|>
   (parseSignedImagF r)
 
-{--
-parseNumPyramid radix =
-  foldl (\parser parserfabric -> parser <|> (parserfabric radix))
-  lookAhead anyToken
-  [parseRealF, parseRealAtRealF, parseRealPlusImagF, parseRealMinusImagF, parsePlusImagF, parseMinusImagF]
---}
-
 parseRealAtRealF :: Radix -> Parser LispVal
 parseRealAtRealF r = do
   real1 <- parseRealF r
