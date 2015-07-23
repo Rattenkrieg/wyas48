@@ -1,0 +1,13 @@
+NUMBER -> SIGN UREAL
+       | UREAL
+
+UREAL -> UREAL1
+         
+UREAL1 -> DOT DIG+ SHARP* SUFFIX
+       | DIG+ UREAL2
+
+UREAL2 -> SHARP*
+       | SHARP* / DIG+ SHARP*
+       | 
+
+UINT -> DIG+ SHARP*

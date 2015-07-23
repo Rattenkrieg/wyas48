@@ -14,20 +14,31 @@ main = do
   args <- getArgs
   putStrLn (readExpr (args !! 0))
 
-data LispNum = Number Integer
-               | Double Double
-               | Single Float
-               | Complex (Complex Double)
-               | Rational (Ratio Integer)
-
 data LispVal = Atom String
                | List [LispVal]
                | DottedList [LispVal] LispVal
-               | Number LispNum
                | String String
                | Bool Bool
+               | NumberE Integer
+               | DoubleI Double
+               | SingleI Float
+               | ComplexI (Complex Double)
+               | ComplexEI (Complex Integer)
+               | ComplexER (Complex (Ratio Integer))
+               | RationalE (Ratio Integer)
                deriving Show
-           
+{-
+lispNumNegate :: LispVal -> LispVal
+lispNumNegate = neg
+    where neg (NumberE i) = NumberE $ negate i
+          neg (DoubleI d) = DoubleI $ negate d
+          neg (SingleI f) = SingleI $ negate f
+          neg (ComplexI c) = ComplexI $ negate c
+          neg (ComplexEI c) = ComplexEI $ negate c
+          neg (ComplexER c) = ComplexER $ negate c
+          neg (RationalE r) = RationalE $ negate r
+          neg v = v
+-}
 
 spaces :: Parser ()
 spaces = skipMany1 space
@@ -54,10 +65,10 @@ parseAtom = do first <- letter <|> symbol
                           "#f" -> Bool False
                           _ -> Atom atom
 
-type Radix = Radix { convert :: ReadS Integer, parse :: Parser Integer }
-readCons :: Integer -> [Char] -> Radix
+data Radix = Radix { converter :: ReadS Integer, parser :: Parser [Char] }
 readCons base xs = readInt base (`elem` xs) digitToInt
-makeRadix base domain = Radix { convert = readCons base domain, parse = many1 domain }
+makeRadix :: Integer -> [Char] -> Radix                   
+makeRadix base domain = Radix { converter = readCons base domain, parser = many1 $ oneOf domain }
 readB = makeRadix 2 "01"
 readH = makeRadix 16 (['0'..'9'] ++ ['a'..'f'] ++ ['A'..'F'])
 readO = makeRadix 8 ['0'..'7']
@@ -70,20 +81,20 @@ data NumberPrefix = NumberPrefix { radix :: Radix, exactness :: Exactness }
 instance Show NumberPrefix where
     show n = "radix fun " ++ show (exactness n)
                           
-data RadixOrExactness = Radix Radix | Exactness Exactness
+data RadixOrExactness = R Radix | E Exactness
 
 instance Show RadixOrExactness where
-    show re = case re of Radix _ -> "radix fun"
-                         Exactness e -> show e      
+    show re = case re of R _ -> "radix fun"
+                         E e -> show e      
 
 charToRadixOrExactness :: Char -> RadixOrExactness
 charToRadixOrExactness c =
-    let f 'e' = Exactness Exact
-        f 'i' = Exactness Inexact
-        f 'b' = Radix readB
-        f 'o' = Radix readO
-        f 'd' = Radix readD
-        f 'x' = Radix readH
+    let f 'e' = E Exact
+        f 'i' = E Inexact
+        f 'b' = R readB
+        f 'o' = R readO
+        f 'd' = R readD
+        f 'x' = R readH
     in f c
                                       
 parsePrefixLiteral :: Parser Char
@@ -103,36 +114,55 @@ manyTake p n = scan n
         case x of Just v -> scan (n - 1) >>= (\vs -> return (v:vs))
                   Nothing -> return []
 
+parseLispNum :: Parser LispVal
+parseLispNum = do
+  pref <- parseNumberPrefix
+  num <- parseNumber pref
+  return num
+                             
 parseNumberPrefix :: Parser NumberPrefix
 parseNumberPrefix = do
   rexs <- manyTake parseOnePrefix 2
-  return $ foldl (\pref re -> case re of Exactness e -> NumberPrefix { radix = radix pref, exactness = e }
-                                         Radix r -> NumberPrefix { radix = r, exactness = exactness pref })
+  return $ foldl (\pref re -> case re of E e -> NumberPrefix { radix = radix pref, exactness = e }
+                                         R r -> NumberPrefix { radix = r, exactness = exactness pref })
                        NumberPrefix { radix = readD, exactness = Unknown } rexs
 
 parseNumber :: NumberPrefix -> Parser LispVal
 parseNumber pref =
     case e of Exact -> parseExact r
               Inexact -> parseInexact r
-              _ -> parseExact r <|> (parseInexact r)
+              _ -> try (parseExact r) <|> (parseInexact r)
     where r = radix pref
           e = exactness pref
 
 parseExact :: Radix -> Parser LispVal
-parseExact r = do
-  sign <- parseSign
-  leadDigits <- parse r
-  let inexactRemainder = liftM ((+1) . count) (many $ char '#')
-  let inexactDecPoint = char '.'
-  (do
-    remainder <- inexactRemainder
-    let exp = inexactDecPoint >> parse r
-    return $ sign leadDigits * remainder + exp)
-  <|> return $ Number $ sign leadDigits
-  
+parseExact r = try (parseComplexExact r) <|> (parseRationalExact r)
 
-parseExactImag :: Radix -> Parser LispVal
-parseExactImag r = 
+parseComplexExact :: Radix -> Parser LispVal
+parseComplexExact r = do
+  real <- parseRationalExact r
+  sign <- (char '-' >> (return negate)) <|> (char '+' >> (return id))
+  imag <- parseUnsignedRational sign r
+  char 'i'
+  return $ case (real, imag) of (RationalE r, RationalE i) -> ComplexER $ r :+ i
+                                (NumberE r, RationalE i) -> ComplexER $ (r % 1) :+ i
+                                (RationalE r, NumberE i) -> ComplexER $ r :+ (i % 1)
+                                (NumberE r, NumberE i) -> ComplexEI $ r :+ i
+
+parseRationalExact :: Radix -> Parser LispVal
+parseRationalExact r = do
+  sign <- parseSign
+  rat <- parseUnsignedRational sign r
+  return rat
+
+--parseUnsignedRational :: (Num a) => (a -> a) -> Radix -> Parser LispVal
+parseUnsignedRational s r = 
+  parser r >>= \num ->
+  (do
+    char '/'
+    den <- parser r
+    return $ RationalE $ (s . fst . head $ converter r num) % (fst . head $ converter r den))
+  <|> (return $ NumberE (s . fst . head $ converter r num))
                
 parseInexact :: Radix -> Parser LispVal
 parseInexact = parseExact
@@ -142,6 +172,7 @@ parseSign = liftM signToFn (option '+' (oneOf "+-"))
             where signToFn '+' = id
                   signToFn _ = negate
 
+                              
 {-                               
 parseNumber :: Parser LispVal
 parseNumber = liftM (Number . read) $ many1 digit
@@ -157,7 +188,7 @@ readExpr input = case parse parseExpr "lisp" input of
                    Left err -> "No match: " ++ show err
                    Right pref -> "lol" --show . fst . (radix pref $ "1")
             
-testParse :: String -> String -> String
-testParse input raw = case parse parseNumberPrefix "lisp" input of
-                        Left err -> "No match: " ++ show err
-                        Right pref -> foldl ((. (show . fst)) . (++)) "" (radix pref raw)
+testParse :: String -> String
+testParse input = case parse parseLispNum "lisp" input of
+                    Left err -> "No match: " ++ show err
+                    Right v -> show v
