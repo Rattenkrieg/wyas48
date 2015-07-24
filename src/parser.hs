@@ -155,14 +155,22 @@ parseRationalExact r = do
   rat <- parseUnsignedRational sign r
   return rat
 
---parseUnsignedRational :: (Num a) => (a -> a) -> Radix -> Parser LispVal
+--parseUnsignedRational :: (Integer -> Integer) -> Radix -> Parser LispVal
 parseUnsignedRational s r = 
   parser r >>= \num ->
   (do
     char '/'
     den <- parser r
-    return $ RationalE $ (s . fst . head $ converter r num) % (fst . head $ converter r den))
-  <|> (return $ NumberE (s . fst . head $ converter r num))
+    return $ RationalE $ convert num % convert den)
+  <|>
+  (do
+    char '.'
+    exp <- parser r
+    let den = ceiling $ (fromIntegral 10) ** (fromIntegral $ length exp)
+    return $ RationalE $ (convert num * den + convert exp) % den)
+  <|>
+  (return $ NumberE $ convert num)
+  where convert n = s . fst . head $ converter r n
                
 parseInexact :: Radix -> Parser LispVal
 parseInexact = parseExact
