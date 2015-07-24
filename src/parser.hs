@@ -136,18 +136,25 @@ parseNumber pref =
           e = exactness pref
 
 parseExact :: Radix -> Parser LispVal
-parseExact r = try (parseComplexExact r) <|> (parseRationalExact r)
+parseExact = parseComplexExact
 
 parseComplexExact :: Radix -> Parser LispVal
-parseComplexExact r = do
-  real <- parseRationalExact r
-  sign <- (char '-' >> (return negate)) <|> (char '+' >> (return id))
-  imag <- parseUnsignedRational sign r
-  char 'i'
-  return $ case (real, imag) of (RationalE r, RationalE i) -> ComplexER $ r :+ i
-                                (NumberE r, RationalE i) -> ComplexER $ (r % 1) :+ i
-                                (RationalE r, NumberE i) -> ComplexER $ r :+ (i % 1)
-                                (NumberE r, NumberE i) -> ComplexEI $ r :+ i
+parseComplexExact r = 
+    parseRationalExact r >>= \real ->
+        (do
+          sign <- (char '-' >> (return negate)) <|> (char '+' >> (return id))
+          imag <- parseUnsignedRational sign r
+          char 'i'
+          return $ case (real, imag) of (RationalE r, RationalE i) -> ComplexER $ r :+ i
+                                        (NumberE r, RationalE i) -> ComplexER $ (r % 1) :+ i
+                                        (RationalE r, NumberE i) -> ComplexER $ r :+ (i % 1)
+                                        (NumberE r, NumberE i) -> ComplexEI $ r :+ i)
+         <|>
+         (do
+           char 'i'
+           return $ case real of (RationalE i) -> ComplexER $ 0 :+ i
+                                 (NumberE i) -> ComplexEI $ 0 :+ i)        
+         <|> return real
 
 parseRationalExact :: Radix -> Parser LispVal
 parseRationalExact r = do
