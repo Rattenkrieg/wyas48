@@ -111,6 +111,8 @@ digs = many1 . oneOf
 parseReal :: Char -> Parser [Char] -> Integer -> Parser LispVal
 parseReal sign exct base = decimalTrail sign exct "0" [] <|> (readReal' sign exct base)
 
+{-     -}                           
+                           
 readReal' :: Char -> Parser [Char] -> Integer -> Parser LispVal
 readReal' sign exct base = do
   n1 <- digs domain
@@ -121,28 +123,35 @@ readReal' sign exct base = do
         char '/'
         n2raw <- digs domain
         inx2 <- exct
-        let n1 = convert $ sign : n1raw
+        let n1 = apply sign (convert n1raw)
         let n2 = convert $ n2raw ++ inx2
         return $ if length (inx1 ++ inx2) == 0 then RationalE (n1 % n2)
                  else DoubleI (fromIntegral n1 / fromIntegral n2))
     <|>
-    (decimalTrail sign exct n1 inx1)
+    (decimalTrail sign exct n1inx inx1)
     <|>
-    (return $ NumberE $ convert $ sign : n1)
+    (return $ NumberE $ apply sign (convert n1inx))
     where domain = case base of 2 -> "01"
                                 8 -> ['0'..'7']
                                 10 -> ['0'..'9']
                                 16 -> ['0'..'9'] ++ ['a'..'f'] ++ ['A'..'F']
           convert = fst . head . readInt base (`elem` domain) digitToInt
+          apply '-' n = negate n
+          apply _ n = n
 
 decimalTrail :: Char -> Parser [Char] -> [Char] -> [Char] -> Parser LispVal
 decimalTrail sign exct n1 inx1 = do
   char '.'
-  exp <- if length inx1 > 0 then exct else (++) <$> many digit <*> exct
-  suff <- liftM3 (\a b c -> a ++ b ++ c) (oneOf "eEsSfFdDlL" *> return "e") (pure <$> option '+' (oneOf "+-")) (many1 digit)
-  let decRaw = n1 ++ suff
-  return $ DoubleI $ fst . head . readFloat $ sign : decRaw
+  exp <- if length inx1 > 0 then exct else (++) <$> option "0" (many1 digit) <*> exct         
+  suff <- suff <|> (return "")
+  let decRaw = n1 ++ "." ++ exp ++ suff
+  return $ DoubleI $ (apply sign) . fst . head . readFloat $ decRaw
+    where apply '-' n = negate n
+          apply _ n = n
 
+suff :: Parser [Char]
+suff = liftM3 (\a b c -> a ++ b ++ c) (oneOf "eEsSfFdDlL" *> return "e") (pure <$> option '+' (oneOf "+-")) (many1 digit)
+                      
 parseComplex exct base = do
   signR <- option '+' (oneOf "+-")
   parseReal signR exct base >>= \real ->
