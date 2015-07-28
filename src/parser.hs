@@ -45,9 +45,9 @@ parseString = do
   return $ String x
 
 parseAtom :: Parser LispVal
-parseAtom = do first <- letter <|> symbol
+parseAtom = do first <- pure <$> letter <|> ((:) <$> char '#' <*> (pure <$> noneOf "iedhob"))
                rest <- many (letter <|> digit <|> symbol)
-               let atom = [first] ++ rest
+               let atom = first ++ rest
                return $ case atom of
                           "#t" -> Bool True
                           "#f" -> Bool False
@@ -109,9 +109,7 @@ digs :: [Char] -> Parser [Char]
 digs = many1 . oneOf
 
 parseReal :: Char -> Parser [Char] -> Integer -> Parser LispVal
-parseReal sign exct base = decimalTrail sign exct "0" [] <|> (readReal' sign exct base)
-
-{-     -}                           
+parseReal sign exct base = decimalTrail sign exct "0" [] False <|> (readReal' sign exct base)
                            
 readReal' :: Char -> Parser [Char] -> Integer -> Parser LispVal
 readReal' sign exct base = do
@@ -128,7 +126,7 @@ readReal' sign exct base = do
         return $ if length (inx1 ++ inx2) == 0 then RationalE (n1 % n2)
                  else DoubleI (fromIntegral n1 / fromIntegral n2))
     <|>
-    (decimalTrail sign exct n1inx inx1)
+    (decimalTrail sign exct n1inx inx1 True)
     <|>
     (return $ NumberE $ apply sign (convert n1inx))
     where domain = case base of 2 -> "01"
@@ -139,10 +137,11 @@ readReal' sign exct base = do
           apply '-' n = negate n
           apply _ n = n
 
-decimalTrail :: Char -> Parser [Char] -> [Char] -> [Char] -> Parser LispVal
-decimalTrail sign exct n1 inx1 = do
+decimalTrail :: Char -> Parser [Char] -> [Char] -> [Char] -> Bool -> Parser LispVal
+decimalTrail sign exct n1 inx1 hasHead = do
   char '.'
-  exp <- if length inx1 > 0 then exct else (++) <$> option "0" (many1 digit) <*> exct         
+  exp <- if length inx1 > 0 then exct else
+             (++) <$> (if hasHead then option "0" (many1 digit) else many1 digit) <*> exct
   suff <- suff <|> (return "")
   let decRaw = n1 ++ "." ++ exp ++ suff
   return $ DoubleI $ (apply sign) . fst . head . readFloat $ decRaw
@@ -176,14 +175,35 @@ parseComplex exct base = do
                               (DoubleI i) -> ComplexI $ 0 :+ i)        
     <|> return real
 
+parseList :: Parser LispVal
+parseList = liftM List $ sepBy parseExpr spaces
+
+parseDottedList :: Parser LispVal
+parseDottedList = do
+  head <- endBy parseExpr spaces
+  tail <- char '.' >> spaces >> parseExpr
+  return $ DottedList head tail
+
+parseQuoted :: Parser LispVal
+parseQuoted = do
+  char '\''
+  x <- parseExpr
+  return $ List [Atom "quote", x]
+         
 parseExpr :: Parser LispVal
-parseExpr = parseAtom
+parseExpr = try parseAtom
             <|> parseString
+            <|> parseQuoted
+            <|> do char '('
+                   x <- (try parseDottedList) <|> parseList
+                   char ')'
+                   return x
+            <|> parseLispNum
             
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
                    Left err -> "No match: " ++ show err
-                   Right pref -> "lol" --show . fst . (radix pref $ "1")
+                   Right pref -> show pref
             
 testParse :: String -> String
 testParse input = case parse parseLispNum "lisp" input of
