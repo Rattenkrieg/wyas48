@@ -219,13 +219,17 @@ parseExpr = parseAtom
             <|> parseList
             <|> parseLispNum
             <|> parseQuasiQuoted
-            <|> (char '`' >> liftM (\x -> List [Atom "quasiquoted", x]) parseExpr)
+            <|> parseUnquoted
 
-parseQuasiQuoted :: Parser LispVal
-parseQuasiQuoted =
+parseUnquoted :: Parser LispVal
+parseUnquoted =
     (char ',' >>
               ((char '@' >> liftM (\x -> List [Atom "unquote-splicing", x]) parseList)
               <|> liftM (\x -> List [Atom "unquote", x]) parseExpr))
+
+parseQuasiQuoted :: Parser LispVal
+parseQuasiQuoted = char '`' >> liftM (\x -> List [Atom "quasiquoted", x]) parseExpr
+    
 
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
