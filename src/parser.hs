@@ -175,28 +175,6 @@ parseComplex exct base = do
                               (DoubleI i) -> ComplexI $ 0 :+ i)        
     <|> return real
 
-{-               
-parseDottedTail :: Parser LispVal
-parseDottedTail = do
-  spaces
-  tail <- try (char '.' >> spaces >> parseExpr) <|> parseExpr
-            
-parseListOrDotted :: Parser LispVal
-parseListOrDotted = do
-  char '('
-  head <- parseExpr
-  (do
-    tail <- manyTill (spaces >> parseExpr) (try (spaces >> char '.' >> spaces >> parseExpr))
-    tail <- char '.' >> spaces >> parseExpr
-    char ')'
-    return $ DottedList head tail)
-   <|>
-   (do
-     tail <- sepBy parseExpr spaces
-     char ')'
-     return $ List $ head : tail)
--}
-
 parseListTail :: [LispVal] -> Parser LispVal
 parseListTail xs =
     (do
@@ -208,15 +186,13 @@ parseListTail xs =
      (do
        char ')'
        return $ List xs)
-    
+
 parseList :: Parser LispVal
-parseList = liftM List $ sepBy parseExpr spaces
-    
-parseDottedList :: Parser LispVal
-parseDottedList = do
-  head <- endBy parseExpr spaces
-  tail <- char '.' >> spaces >> parseExpr
-  return $ DottedList head tail
+parseList = do
+  char '('
+  head <- parseExpr
+  x <- parseListTail [head]
+  return x
 
 parseQuoted :: Parser LispVal
 parseQuoted = do
@@ -228,12 +204,17 @@ parseExpr :: Parser LispVal
 parseExpr = try parseAtom
             <|> parseString
             <|> parseQuoted
-            <|> do char '('
-                   head <- parseExpr
-                   x <- parseListTail [head]
-                   return x
+            <|> parseList
             <|> parseLispNum
-            
+            <|> parseQuasiQuoted
+            <|> (char '`' >> liftM (\x -> List [Atom "quasiquoted", x]) parseExpr)
+
+parseQuasiQuoted :: Parser LispVal
+parseQuasiQuoted =
+    (char ',' >>
+              ((char '@' >> liftM (\x -> List [Atom "unquote-splicing", x]) parseList)
+              <|> liftM (\x -> List [Atom "unquote", x]) parseExpr))
+
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
                    Left err -> "No match: " ++ show err
