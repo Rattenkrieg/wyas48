@@ -44,6 +44,7 @@ parseString = do
   char '"'
   return $ String x
 
+{-         
 parseAtom :: Parser LispVal
 parseAtom = do first <- pure <$> letter <|> ((:) <$> char '#' <*> (pure <$> noneOf "iedhob"))
                rest <- many (letter <|> digit <|> symbol)
@@ -52,7 +53,18 @@ parseAtom = do first <- pure <$> letter <|> ((:) <$> char '#' <*> (pure <$> none
                           "#t" -> Bool True
                           "#f" -> Bool False
                           _ -> Atom atom
+-}
 
+parseAtom :: Parser LispVal
+parseAtom = do 
+              first <- letter <|> (oneOf "!$%&|*+-/:<=>?@^_~")
+              rest <- many (letter <|> digit <|> symbol)
+              let atom = first:rest
+              return $ case atom of 
+                         "#t" -> Bool True
+                         "#f" -> Bool False
+                         _    -> Atom atom
+                         
 data Exactness = Exact | Inexact | Unknown deriving Show
                           
 data RadixOrExactness = R Integer | E Exactness deriving Show
@@ -201,7 +213,7 @@ parseQuoted = do
   return $ List [Atom "quote", x]
          
 parseExpr :: Parser LispVal
-parseExpr = try parseAtom
+parseExpr = parseAtom
             <|> parseString
             <|> parseQuoted
             <|> parseList
