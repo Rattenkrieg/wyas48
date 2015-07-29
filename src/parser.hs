@@ -175,9 +175,43 @@ parseComplex exct base = do
                               (DoubleI i) -> ComplexI $ 0 :+ i)        
     <|> return real
 
+{-               
+parseDottedTail :: Parser LispVal
+parseDottedTail = do
+  spaces
+  tail <- try (char '.' >> spaces >> parseExpr) <|> parseExpr
+            
+parseListOrDotted :: Parser LispVal
+parseListOrDotted = do
+  char '('
+  head <- parseExpr
+  (do
+    tail <- manyTill (spaces >> parseExpr) (try (spaces >> char '.' >> spaces >> parseExpr))
+    tail <- char '.' >> spaces >> parseExpr
+    char ')'
+    return $ DottedList head tail)
+   <|>
+   (do
+     tail <- sepBy parseExpr spaces
+     char ')'
+     return $ List $ head : tail)
+-}
+
+parseListTail :: [LispVal] -> Parser LispVal
+parseListTail xs =
+    (do
+      spaces
+      isDottedTail <- (try (char '.' >> spaces >> return True)) <|> (return False)
+      tail <- parseExpr
+      if isDottedTail then (char ')') >> (return $ DottedList xs tail) else parseListTail (xs ++ [tail]))
+     <|>
+     (do
+       char ')'
+       return $ List xs)
+    
 parseList :: Parser LispVal
 parseList = liftM List $ sepBy parseExpr spaces
-
+    
 parseDottedList :: Parser LispVal
 parseDottedList = do
   head <- endBy parseExpr spaces
@@ -195,8 +229,8 @@ parseExpr = try parseAtom
             <|> parseString
             <|> parseQuoted
             <|> do char '('
-                   x <- (try parseDottedList) <|> parseList
-                   char ')'
+                   head <- parseExpr
+                   x <- parseListTail [head]
                    return x
             <|> parseLispNum
             
