@@ -1,32 +1,13 @@
-module Main where
+module Parser where
 import System.Environment
 import Control.Monad
 import Text.ParserCombinators.Parsec hiding (spaces)
 import Text.Parsec.Error
 import Numeric
 import Data.Char
-import Data.Ratio
-import Data.Complex
 import Data.Maybe
 import Control.Applicative hiding ((<|>), many)
-
-main :: IO ()
-main = do
-  args <- getArgs
-  putStrLn (readExpr (args !! 0))
-
-data LispVal = Atom String
-               | List [LispVal]
-               | DottedList [LispVal] LispVal
-               | String String
-               | Bool Bool
-               | NumberE Integer
-               | DoubleI Double
-               | ComplexI (Complex Double)
-               | ComplexEI (Complex Integer)
-               | ComplexER (Complex (Ratio Integer))
-               | RationalE (Ratio Integer)
-               deriving Show
+import Ast
 
 spaces :: Parser ()
 spaces = skipMany1 space
@@ -231,11 +212,6 @@ parseQuasiQuoted :: Parser LispVal
 parseQuasiQuoted = char '`' >> liftM (\x -> List [Atom "quasiquoted", x]) parseExpr
     
 
-readExpr :: String -> String
-readExpr input = case parse parseExpr "lisp" input of
-                   Left err -> "No match: " ++ show err
-                   Right pref -> show pref
-            
 testParse :: String -> String
 testParse input = case parse parseLispNum "lisp" input of
                     Left err -> "No match: " ++ show err
