@@ -81,7 +81,7 @@ parseLispNum :: Parser LispVal
 parseLispNum = do
   pref <- parseNumberPrefix
   num <- parseNumber pref
-  return num
+  return $ Number num
 
 parseNumberPrefix = do 
   rexs <- manyTake parseOnePrefix 2
@@ -101,10 +101,10 @@ inexactTrail = liftM (map (\_ -> '0')) $ many $ char '#'
 digs :: [Char] -> Parser [Char]
 digs = many1 . oneOf
 
-parseReal :: Char -> Parser [Char] -> Integer -> Parser LispVal
+parseReal :: Char -> Parser [Char] -> Integer -> Parser LispNum
 parseReal sign exct base = decimalTrail sign exct "0" [] False <|> (readReal' sign exct base)
                            
-readReal' :: Char -> Parser [Char] -> Integer -> Parser LispVal
+readReal' :: Char -> Parser [Char] -> Integer -> Parser LispNum
 readReal' sign exct base = do
   n1 <- digs domain
   inx1 <- exct
@@ -130,7 +130,7 @@ readReal' sign exct base = do
           apply '-' n = negate n
           apply _ n = n
 
-decimalTrail :: Char -> Parser [Char] -> [Char] -> [Char] -> Bool -> Parser LispVal
+decimalTrail :: Char -> Parser [Char] -> [Char] -> [Char] -> Bool -> Parser LispNum
 decimalTrail sign exct n1 inx1 hasHead = do
   char '.'
   exp <- if length inx1 > 0 then exct else

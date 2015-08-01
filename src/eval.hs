@@ -22,15 +22,9 @@ primitives = [("+", numericBinop (+)),
               ("remainder", numericBinop (rem))]
 
 numericBinop :: Num a => (a -> a -> a) -> [LispVal] -> LispVal
-numericBinop op params = foldl1 (\a b -> commonNumOp a b op) params
+numericBinop op = foldl1 (\a b -> genericOp a b op)
 
-commonNumOp :: Num a => LispVal -> LispVal -> (a -> a -> a) -> LispVal
-commonNumOp (NumberE i1) (NumberE i2) op = NumberE $ i1 `op` i2
-commonNumOp (NumberE i1) (DoubleI d2) op = DoubleI $ (fromIntegral i1) `op` d2
-commonNumOp d@(DoubleI _) n@(NumberE _) op = commonNumOp n d op
-commonNumOp (DoubleI d1) (DoubleI d2) op = DoubleI $ d1 `op` d2
-commonNumOp (NumberE i1) (RationalE r2) op = RationalE $ (i1 % 1) `op` r2
-commonNumOp r@(RationalE _) n@(NumberE _) op = commonNumOp n r op
-commonNumOp (RationalE r1) (DoubleI d2) op = DoubleI $ (fromIntegral $ numerator r1) / (fromIntegral $ denominator r1) `op` d2
-commonNumOp d@(DoubleI _) r@(RationalE _) op = commonNumOp r d op
-commonNumOp (RationalE r1) (RationalE r2) op = RationalE $ r1 `op` r2
+genericOp a@(LispNum _) b@(LispNum _) op = a `op` b
+genericOp a@(LispVal _) b@(LispNum _) op = (NumberE 0) `op` b
+genericOp a@(LispNum _) b@(LispVal _) op = genericOp b a
+genericOp _ _ op = NumberE 0
