@@ -13,18 +13,19 @@ apply func args = maybe (Bool False) ($ args) $ lookup func primitives
 
 
 primitives :: [(String, [LispVal] -> LispVal)]
-primitives = [("+", numericBinop (+)),
+primitives = [("+", numericBinop (Ast.+)),
               ("-", numericBinop (-)),
-              ("*", numericBinop (*)),
-              ("/", numericBinop (div)),
+              ("*", numericBinop (Ast.*)),
+              ("/", numericBinop (Ast./)),
               ("mod", numericBinop (mod)),
               ("quotient", numericBinop (quot)),
               ("remainder", numericBinop (rem))]
 
-numericBinop :: Num a => (a -> a -> a) -> [LispVal] -> LispVal
+--numericBinop :: Num a => (a -> a -> a) -> [LispVal] -> LispVal
 numericBinop op = foldl1 (\a b -> genericOp a b op)
 
-genericOp a@(LispNum _) b@(LispNum _) op = a `op` b
-genericOp a@(LispVal _) b@(LispNum _) op = (NumberE 0) `op` b
-genericOp a@(LispNum _) b@(LispVal _) op = genericOp b a
-genericOp _ _ op = NumberE 0
+--genericOp :: LispVal -> LispVal -> (LispNum -> LispNum -> LispNum) -> LispVal
+genericOp (Number a) (Number b) op = Number (a `op` b)
+genericOp a (Number b) op = Number ((NumberE 0) `op` b)
+genericOp (Number a) b op = Number (a `op` (NumberE 0))
+genericOp _ _ op = Number (NumberE 0)
