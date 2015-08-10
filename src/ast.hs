@@ -83,6 +83,8 @@ negate (RationalE a) = RationalE $ Prelude.negate a
 (+) (RationalE r1) (DoubleI d2) = DoubleI $ (fromIntegral $ numerator r1) Prelude./ (fromIntegral $ denominator r1) Prelude.+ d2
 (+) d@(DoubleI _) r@(RationalE _) = r Ast.+ d
 (+) (RationalE r1) (RationalE r2) = RationalE $ r1 Prelude.+ r2
+{- (-) -}
+(-) l1 l2 = l1 Ast.+ (Ast.negate l2)
 {- (*) -}
 (*) (NumberE i1) (NumberE i2) = NumberE $ i1 Prelude.* i2
 (*) (NumberE i1) (DoubleI d2) = DoubleI $ (fromIntegral i1) Prelude.* d2

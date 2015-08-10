@@ -7,7 +7,9 @@ import Numeric
 import Data.Char
 import Data.Maybe
 import Control.Applicative hiding ((<|>), many)
-import Ast
+import Ast hiding ((/), (==), (*), negate)
+import Data.Ratio
+import Data.Complex    
 
 spaces :: Parser ()
 spaces = skipMany1 space
@@ -74,7 +76,7 @@ manyTake p n = scan n
       scan n | n <= 0 = return []
       scan n = do
         x <- optionMaybe p
-        case x of Just v -> scan (n - 1) >>= (\vs -> return (v:vs))
+        case x of Just v -> scan (n Prelude.- 1) >>= (\vs -> return (v:vs))
                   Nothing -> return []
 
 parseLispNum :: Parser LispVal
