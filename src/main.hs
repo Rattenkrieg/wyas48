@@ -1,7 +1,7 @@
-module Main where
-import Parser
-import Eval
-import Ast    
+module Main (main) where
+import Scheme.Parser as Parser
+import Scheme.Eval as Eval
+import Scheme.Ast as Ast
 import System.Environment
 import Text.ParserCombinators.Parsec    
 import Control.Monad.Error

@@ -1,4 +1,4 @@
-module Parser where
+module Scheme.Parser where
 import System.Environment
 import Control.Monad
 import Text.ParserCombinators.Parsec hiding (spaces)
@@ -7,7 +7,7 @@ import Numeric
 import Data.Char
 import Data.Maybe
 import Control.Applicative hiding ((<|>), many)
-import Ast hiding ((/), (==), (*), negate)
+import Scheme.Ast as Ast hiding ((/), (==), (*), negate)
 import Data.Ratio
 import Data.Complex    
 
@@ -73,7 +73,7 @@ parseOnePrefix = do
 
 manyTake p n = scan n
     where
-      scan n | n <= 0 = return []
+      scan n | n Prelude.<= 0 = return []
       scan n = do
         x <- optionMaybe p
         case x of Just v -> scan (n Prelude.- 1) >>= (\vs -> return (v:vs))
@@ -135,7 +135,7 @@ readReal' sign exct base = do
 decimalTrail :: Char -> Parser [Char] -> [Char] -> [Char] -> Bool -> Parser LispNum
 decimalTrail sign exct n1 inx1 hasHead = do
   char '.'
-  exp <- if length inx1 > 0 then exct else
+  exp <- if length inx1 Prelude.> 0 then exct else
              (++) <$> (if hasHead then option "0" (many1 digit) else many1 digit) <*> exct
   suff <- suff <|> (return "")
   let decRaw = n1 ++ "." ++ exp ++ suff
@@ -183,8 +183,11 @@ parseListTail xs =
        return $ List xs)
 
 parseList :: Parser LispVal
-parseList = do
-  char '('
+parseList = char '(' >> (emptyTail <|> coolTail)
+
+emptyTail = char ')' >> return (List [])
+
+coolTail = do
   head <- parseExpr
   x <- parseListTail [head]
   return x
@@ -215,6 +218,6 @@ parseQuasiQuoted = char '`' >> liftM (\x -> List [Atom "quasiquoted", x]) parseE
     
 
 testParse :: String -> String
-testParse input = case parse parseLispNum "lisp" input of
+testParse input = case parse parseExpr "lisp" input of
                     Left err -> "No match: " ++ show err
                     Right v -> show v
