@@ -1,3 +1,4 @@
+{-# LANGUAGE ExistentialQuantification #-}
 module Scheme.Eval where
 import Scheme.Ast as Ast
 import Data.Ratio
@@ -15,7 +16,9 @@ eval (List [Atom "if", pred, conseq, alt]) = do
     Bool False -> eval alt
     Bool True -> eval conseq
     wtf -> throwError $ TypeMismatch "Bool" wtf
-eval (List (Atom func : args)) = mapM eval args >>=  apply func                 
+eval (List (Atom "case" : key : clauses)) = caseClause key clauses
+eval (List (Atom "cond" : clauses)) = condClause clauses
+eval (List (Atom func : args)) = mapM eval args >>= apply func                 
 eval lispVal = return lispVal
 eval badForm = throwError $ BadSpecialForm "Unrecognized special form" badForm
            
@@ -37,6 +40,7 @@ primitives = [("+", numericBinop (+)),
               ("number?", isNumber),
               ("symbol->string", symbolToString),
               ("string->symbol", stringToSymbol),
+              --("make-string", makeString),
               ("=", numBoolBinop (==)),
               ("<", numBoolBinop (<)),
               (">", numBoolBinop (>)),
@@ -75,6 +79,35 @@ cons [x, List xs] = return $ List $ [x] ++ xs
 cons [x, DottedList xs xlast] = return $ DottedList ([x] ++ xs) xlast
 cons [x1, x2] = return $ DottedList [x1] x2
 cons badArgList = throwError $ NumArgs 2 badArgList
+
+--caseClause :: LispVal -> [LispVal] -> ThrowsError LispVal
+caseClause test ((List (List datums : exprs)) : clauses) = do
+    evaled <- mapM ((>>= eqv) . sequence . (: [key]) . eval) datums
+    if any isTrue evaled
+    then last `fmap` mapM eval exprs
+    else caseClause test clauses
+        where key = eval test
+              isTrue (Bool True) = True
+              isTrue _ = False
+caseClause _ ((List (Atom "else" : exprs)) : []) = last `fmap` mapM eval exprs
+caseClause _ [] = throwError $ BadSpecialForm "no else clause after failed test clauses" (Atom "case")
+caseClause _ ((List (Atom "else" : exprs)) : xs) = throwError $ BadSpecialForm "more test clauses after else clause in cond for" (head xs)    
+
+condClause :: [LispVal] -> ThrowsError LispVal
+condClause (List [test, Atom "=>", Atom expr] : xs) = do
+  result <- eval test
+  case result of
+    Bool False -> condClause xs
+    v -> apply expr [v]
+condClause ((List (Atom "else" : exprs)) : []) = last `fmap` mapM eval exprs
+condClause ((List (Atom "else" : exprs)) : xs) = throwError $ BadSpecialForm "more test clauses after else clause in cond for" (head xs)
+condClause ((List (test : exprs)) : xs) = do
+  result <- eval test
+  case result of
+   Bool True -> last `fmap` mapM eval exprs
+   Bool False -> condClause xs
+   wtf -> throwError $ TypeMismatch "Bool" wtf
+condClause [] = throwError $ BadSpecialForm "no else clause after failed test clauses" (Atom "cond")
 
 data Unpacker = forall a. Eq a => AnyUnpacker (LispVal -> ThrowsError a)
 
@@ -164,8 +197,12 @@ symbolToString (x:xs) = throwError $ TypeMismatch "lol" x
 stringToSymbol :: [LispVal] -> ThrowsError LispVal
 stringToSymbol [(String s)] = return $ Atom s
 stringToSymbol (x:xs) = throwError $ TypeMismatch "lol" x
-
-
+{-
+makeString :: [LispVal] -> ThrowsError LispVal
+makeString [Number (NumberE k)] = return $ take k $ repeat "_"
+makeString [Number (NumberE k), String s] = return $ take k $ repeat $ head s
+makeString ((String s):xs) = head s ++ 
+-}           
 data LispError = NumArgs Integer [LispVal]
                | TypeMismatch String LispVal
                | Parser ParseError

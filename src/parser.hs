@@ -40,7 +40,7 @@ parseAtom = do first <- pure <$> letter <|> ((:) <$> char '#' <*> (pure <$> none
 
 parseAtom :: Parser LispVal
 parseAtom = do 
-              first <- letter <|> (oneOf "!$%&|*+-/:<=>?@^_~")
+              first <- letter <|> (oneOf "!#$%&|*+-/:<=>?@^_~")
               rest <- many (letter <|> digit <|> symbol)
               let atom = first:rest
               return $ case atom of 
